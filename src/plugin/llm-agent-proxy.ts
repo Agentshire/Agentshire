@@ -38,13 +38,13 @@ function loadProvider(): ProviderConfig | null {
   try {
     const rt = getTownRuntime();
     const cfg = rt.config.loadConfig() as any;
-    const env: Record<string, string> = cfg?.env ?? {};
+    const configVars: Record<string, string> = cfg?.env ?? {};
     const providers = cfg?.models?.providers;
     if (!providers || typeof providers !== "object") return null;
 
     for (const [, provider] of Object.entries(providers) as [string, any][]) {
       if (!provider.baseUrl || !provider.apiKey) continue;
-      const apiKey = resolveEnvRef(String(provider.apiKey), env);
+      const apiKey = resolveEnvRef(String(provider.apiKey), configVars);
       if (!apiKey) continue;
 
       const apiFormat = provider.api?.startsWith("openai") ? "openai" as const : "anthropic-messages" as const;
