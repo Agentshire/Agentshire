@@ -106,7 +106,7 @@ https://github.com/user-attachments/assets/fa6563ae-e78b-49b1-ae7b-8a8a96738341
 
 ## 环境要求
 
-- [OpenClaw](https://github.com/openclaw/openclaw) **2026.3.13** 或 [QClaw](https://qclaw.cn) **0.2.x**
+- [OpenClaw](https://github.com/openclaw/openclaw) **2026.4.16+**（推荐；2026.3.13 亦可用）或 [QClaw](https://qclaw.cn) **0.2.x**
 - Node.js >= 18（QClaw 用户无需安装）
 
 ---
@@ -174,12 +174,11 @@ Link 安装用户：`cd Agentshire && git pull && npm install`。
    ```bash
    openclaw gateway
    ```
-3. 小镇会自动在浏览器中打开
+3. 在浏览器中打开小镇（见下方地址）
 4. 在浏览器中对话——所有 Agent 活动会自动映射到小镇中
 
-> **提示**：如果浏览器没有自动打开，手动访问：
-> `http://localhost:55210?ws=ws://localhost:55211`
-
+> **提示**：插件默认在 **55210** 端口启动独立 HTTP 服务器。
+> 打开 `http://localhost:55210?ws=ws://localhost:55211` 即可访问小镇。
 
 ### 居民工坊
 
@@ -201,8 +200,7 @@ Link 安装用户：`cd Agentshire && git pull && npm install`。
         "enabled": true,
         "config": {
           "wsPort": 55211,
-          "townPort": 55210,
-          "autoLaunch": true
+          "townPort": 55210
         }
       }
     }
@@ -213,8 +211,7 @@ Link 安装用户：`cd Agentshire && git pull && npm install`。
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `wsPort` | 55211 | WebSocket 端口（插件与前端实时通信） |
-| `townPort` | 55210 | HTTP 端口（前端静态资源 + 编辑器 API） |
-| `autoLaunch` | true | 启动时自动在浏览器中打开小镇 |
+| `townPort` | 55210 | HTTP 端口（小镇前端、编辑器 API、管家工作区文件） |
 
 ### AI 可用工具
 
@@ -399,13 +396,18 @@ agentshire/
 
 **解决**：重启前先杀掉 gateway：`ps aux | grep openclaw-gateway | grep -v grep | awk '{print $2}' | xargs kill`
 
-### OpenClaw 2026.4.x 上 Channel 不启动
+### HTTP 端口被占用
 
-**现象**：插件加载成功但 WebSocket 连接未建立，小镇页面一直显示"连接中…"。
+**现象**：启动日志显示 `[agentshire] ❌ HTTP port 55210 is already in use.`
 
-**原因**：OpenClaw 2026.4.x 在外部插件的 Channel 初始化流程中存在回归 Bug，`defineChannelPluginEntry` 生命周期未被正确调用。
+**原因**：另一个进程（如 Vite 开发服务器或之前的 Gateway 实例）已占用 55210 端口。
 
-**解决**：降级到 OpenClaw 2026.3.13。这是已知的上游问题。
+**解决**：
+1. 找到并关闭占用端口的进程：`lsof -i :55210`
+2. 或在 `~/.openclaw/openclaw.json` 中更换端口：
+   ```json
+   { "plugins": { "entries": { "agentshire": { "config": { "townPort": 55212 } } } } }
+   ```
 
 ### 角色工坊"AI 生成"返回 500 错误
 

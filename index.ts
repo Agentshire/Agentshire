@@ -11,10 +11,14 @@ import { onAgentStarted, onAgentCompleted, clearPlan, isCurrentBatchDone, hasAct
 import type { CustomAssetManager } from "./src/plugin/custom-asset-manager.js";
 import { pushNewChatMessages, pushSubagentCompletion } from "./src/plugin/ws-server.js";
 import { handleEditorRequest, ensureEditorDirs, MIME_TYPES } from "./src/plugin/editor-serve.js";
+import { createServer, type Server } from "node:http";
+import { dirname as _dirname, join as _join } from "node:path";
+import { fileURLToPath as _fu } from "node:url";
+import { existsSync as _exists, readFileSync as _read, statSync as _stat } from "node:fs";
 
 const NUDGE_DELAY_MS = 10_000;
 let pendingNudgeTimer: ReturnType<typeof setTimeout> | null = null;
-let httpServer: import("node:http").Server | null = null;
+let httpServer: Server | null = null;
 
 function cancelNudge(): void {
   if (pendingNudgeTimer) {
@@ -289,24 +293,17 @@ export default {
       }
     });
 
-    api.registerService({
-      id: "agentshire-frontend",
-      start: async () => {
-        const config = api.pluginConfig as Record<string, unknown> | undefined;
-        const townPort = (config?.townPort as number) ?? 55210;
-        try {
-          const { createServer } = await import("node:http");
-          const { join } = await import("node:path");
-          const { readFileSync, existsSync, statSync } = await import("node:fs");
-          const { fileURLToPath } = await import("node:url");
-          const pluginDir = join(fileURLToPath(import.meta.url), "..");
-          const distDir = join(pluginDir, "town-frontend", "dist");
-          if (!existsSync(distDir)) {
-            console.log(`[agentshire] Town frontend not built yet. Run: cd ${join(pluginDir, "town-frontend")} && npm run build`);
-            return;
-          }
+    // Start HTTP frontend server eagerly during plugin init
+    // (registerService.start() may not be called in all OpenClaw versions)
+    if (!httpServer) {
+      const townPort = ((api.pluginConfig as Record<string, unknown> | undefined)?.townPort as number) ?? 55210;
+      try {
+        const pluginDir = _dirname(_fu(import.meta.url));
+        const distDir = _join(pluginDir, "town-frontend", "dist");
+        if (!_exists(distDir)) {
+          console.log(`[agentshire] Town frontend not built yet. Run: cd ${_join(pluginDir, "town-frontend")} && npm run build`);
+        } else {
           ensureEditorDirs(pluginDir);
-
           const server = createServer(async (req, res) => {
             let urlPath = new URL(req.url ?? "/", `http://localhost:${townPort}`).pathname;
             if (urlPath === "/" || urlPath === "") urlPath = "/index.html";
@@ -326,34 +323,34 @@ export default {
                   "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
                   "Access-Control-Allow-Origin": "*",
                 });
-                res.end(readFileSync(wsFile));
+                res.end(_read(wsFile));
                 return;
               }
             }
 
             // Fallback: serve from dist/
-            const filePath = join(distDir, decodeURIComponent(urlPath));
-            if (existsSync(filePath) && statSync(filePath).isFile()) {
+            const filePath = _join(distDir, decodeURIComponent(urlPath));
+            if (_exists(filePath) && _stat(filePath).isFile()) {
               const ext = filePath.substring(filePath.lastIndexOf("."));
               res.writeHead(200, {
                 "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
                 "Access-Control-Allow-Origin": "*",
               });
-              res.end(readFileSync(filePath));
+              res.end(_read(filePath));
               return;
             }
 
             // SPA fallback for HTML pages
-            const htmlFile = urlPath.endsWith(".html") ? join(distDir, urlPath) : null;
-            if (htmlFile && existsSync(htmlFile)) {
+            const htmlFile = urlPath.endsWith(".html") ? _join(distDir, urlPath) : null;
+            if (htmlFile && _exists(htmlFile)) {
               res.writeHead(200, { "Content-Type": "text/html" });
-              res.end(readFileSync(htmlFile));
+              res.end(_read(htmlFile));
               return;
             }
-            const indexPath = join(distDir, "index.html");
-            if (existsSync(indexPath)) {
+            const indexPath = _join(distDir, "index.html");
+            if (_exists(indexPath)) {
               res.writeHead(200, { "Content-Type": "text/html" });
-              res.end(readFileSync(indexPath));
+              res.end(_read(indexPath));
             } else {
               res.writeHead(404);
               res.end("Not Found");
@@ -364,23 +361,38 @@ export default {
           server.on("error", (err: NodeJS.ErrnoException) => {
             if (err.code === "EADDRINUSE") {
               console.error(`[agentshire] ❌ HTTP port ${townPort} is already in use.`);
-              console.error(`[agentshire]    Fix: stop the process using this port (vite dev server?), or change townPort in openclaw.json:`);
-              console.error(`[agentshire]    { "plugins": { "entries": { "agentshire": { "config": { "townPort": ${townPort + 1} } } } } }`);
+              console.error(`[agentshire]    Fix: stop the process using this port, or change townPort in openclaw.json`);
             } else {
               console.error("[agentshire] Frontend server error:", err);
             }
           });
-        } catch (err) {
-          console.error("[agentshire] Failed to start town frontend server:", err);
         }
-      },
-      stop: async () => {
-        stopAllWatchers();
-        if (httpServer) {
-          httpServer.close();
-          httpServer = null;
-        }
-      },
-    });
+      } catch (err) {
+        console.error("[agentshire] Failed to start town frontend server:", err);
+      }
+    }
+
+    // Register process-level cleanup for graceful shutdown
+    const cleanup = () => {
+      stopAllWatchers();
+      if (httpServer) {
+        httpServer.close();
+        httpServer = null;
+      }
+      cancelNudge();
+    };
+    process.once("exit", cleanup);
+    process.once("SIGINT", cleanup);
+    process.once("SIGTERM", cleanup);
+  },
+
+  deregister() {
+    stopAllWatchers();
+    if (httpServer) {
+      httpServer.close(() => console.log("[agentshire] HTTP server closed."));
+      httpServer = null;
+    }
+    cancelNudge();
+    console.log("[agentshire] Plugin deregistered, resources cleaned up.");
   },
 };

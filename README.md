@@ -106,7 +106,7 @@ https://github.com/user-attachments/assets/fa6563ae-e78b-49b1-ae7b-8a8a96738341
 
 ## Requirements
 
-- [OpenClaw](https://github.com/openclaw/openclaw) **2026.3.13** (recommended)
+- [OpenClaw](https://github.com/openclaw/openclaw) **2026.4.16+** (recommended; 2026.3.13 also supported)
 - Node.js >= 18
 
 ---
@@ -174,12 +174,11 @@ Then restart the Gateway (or restart QClaw).
    ```bash
    openclaw gateway
    ```
-3. The town opens automatically in your browser
+3. Open the town in your browser (see URLs below)
 4. Chat in the browser — all Agent activity is automatically mapped to the town
 
-> **Tip**: If the browser didn't open automatically, visit:
-> `http://localhost:55210?ws=ws://localhost:55211`
-
+> **Tip**: The plugin starts a standalone HTTP server on port **55210** by default.
+> Open `http://localhost:55210?ws=ws://localhost:55211` in your browser.
 
 ### Citizen Workshop
 
@@ -203,8 +202,7 @@ Customize ports and behavior in your `openclaw.json` (`~/.openclaw/openclaw.json
         "enabled": true,
         "config": {
           "wsPort": 55211,
-          "townPort": 55210,
-          "autoLaunch": true
+          "townPort": 55210
         }
       }
     }
@@ -215,8 +213,7 @@ Customize ports and behavior in your `openclaw.json` (`~/.openclaw/openclaw.json
 | Option | Default | Description |
 |--------|---------|-------------|
 | `wsPort` | 55211 | WebSocket port (real-time plugin ↔ frontend communication) |
-| `townPort` | 55210 | HTTP port (frontend static files + editor API) |
-| `autoLaunch` | true | Auto-open town in browser on startup |
+| `townPort` | 55210 | HTTP port for serving the town frontend, editor API, and steward workspace |
 
 ### AI Tools
 
@@ -401,13 +398,18 @@ Without the asset pack: the game runs normally, editor has basic assets, and the
 
 **Fix**: Kill the gateway process before restarting QClaw: `ps aux | grep openclaw-gateway | grep -v grep | awk '{print $2}' | xargs kill`
 
-### Channel does not start on OpenClaw 2026.4.x
+### HTTP port already in use
 
-**Symptom**: Plugin loads successfully but no WebSocket connection is established; the town page shows "connecting…" indefinitely.
+**Symptom**: Startup log shows `[agentshire] ❌ HTTP port 55210 is already in use.`
 
-**Cause**: OpenClaw 2026.4.x introduced a regression in external plugin channel initialization. The `defineChannelPluginEntry` lifecycle is not correctly invoked.
+**Cause**: Another process (e.g. a Vite dev server, or a previous Gateway instance) is already using port 55210.
 
-**Fix**: Downgrade to OpenClaw 2026.3.13. This is a known upstream issue.
+**Fix**:
+1. Find and stop the conflicting process: `lsof -i :55210`
+2. Or change the port in `~/.openclaw/openclaw.json`:
+   ```json
+   { "plugins": { "entries": { "agentshire": { "config": { "townPort": 55212 } } } } }
+   ```
 
 ### Citizen Workshop "AI Generate" returns error 500
 

@@ -24,8 +24,6 @@ export async function sendNudgeMessage(townSessionId: string, body: string): Pro
 export interface ResolvedTownAccount {
   accountId: string;
   wsPort: number;
-  townPort: number;
-  autoLaunch: boolean;
 }
 
 function resolveAccount(
@@ -33,14 +31,12 @@ function resolveAccount(
   accountId: string,
 ): ResolvedTownAccount {
   interface ChannelConfig {
-    channels?: Record<string, { wsPort?: number; townPort?: number; autoLaunch?: boolean }>;
+    channels?: Record<string, { wsPort?: number }>;
   }
   const channelCfg = (cfg as ChannelConfig)?.channels?.[CHANNEL_ID] ?? {};
   return {
     accountId,
     wsPort: channelCfg.wsPort ?? 55211,
-    townPort: channelCfg.townPort ?? 55210,
-    autoLaunch: channelCfg.autoLaunch ?? true,
   };
 }
 
@@ -331,51 +327,9 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
         },
       });
 
-      const townUrl = `http://localhost:${account.townPort}?ws=ws://localhost:${account.wsPort}`;
-      const editorUrl = `http://localhost:${account.townPort}/editor.html`;
-      const workshopUrl = `http://localhost:${account.townPort}/citizen-editor.html`;
-      console.log([
-        "",
-        "  ┌─────────────────────────────────────────────────────────────────┐",
-        "  │  🏘️  Agentshire v2026.4.6 is live!                                │",
-        "  │                                                                 │",
-        `  │  Town:     ${townUrl}  │`,
-        `  │  Editor:   ${editorUrl}                          │`,
-        `  │  Workshop: ${workshopUrl}                   │`,
-        "  │                                                                 │",
-        "  │  Click a link above or paste it into your browser.              │",
-        "  │  To reopen later: openclaw gateway status                       │",
-        "  └─────────────────────────────────────────────────────────────────┘",
-        "",
-      ].join("\n"));
-
-      if (account.autoLaunch) {
-        try {
-          const openCmd =
-            process.platform === "darwin"
-              ? "open"
-              : process.platform === "win32"
-                ? "cmd"
-                : "xdg-open";
-          const openArgs =
-            process.platform === "win32"
-              ? ["/c", "start", townUrl]
-              : [townUrl];
-          let launched = false;
-          try {
-            const rt = getTownRuntime();
-            await rt.system.runCommandWithTimeout(openCmd, openArgs, { timeoutMs: 5000 });
-            launched = true;
-          } catch {}
-          if (!launched) {
-            const mod = "node:" + "child" + "_process";
-            const cp = await import(/* webpackIgnore: true */ mod);
-            cp.spawn(openCmd, openArgs, { detached: true, stdio: "ignore" }).unref();
-          }
-        } catch (err) {
-          console.warn('[agentshire] Auto-launch browser failed:', (err as Error).message)
-        }
-      }
+      console.log(
+        `[agentshire] Town WebSocket ready on ws://localhost:${account.wsPort}`,
+      );
 
       await waitUntilAbort(ctx.abortSignal);
 
