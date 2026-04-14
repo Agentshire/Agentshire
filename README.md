@@ -14,10 +14,10 @@ Agentshire is an OpenClaw/QClaw plugin that turns AI agents into living NPCs ins
 >
 > | Platform | Version | Status |
 > |---|---|---|
-> | **OpenClaw CLI** | 2026.3.13 | ✅ Recommended |
+> | **OpenClaw CLI** | 2026.4.x+ | ✅ Recommended |
 > | **QClaw Desktop** | 0.2.x | ✅ Supported |
+> | OpenClaw CLI | 2026.3.13 | ✅ Supported |
 > | OpenClaw CLI | 2026.3.7 – 3.12 | ⚠️ May work |
-> | OpenClaw CLI | 2026.4.x+ | ❌ Not yet — channel init regression |
 >
 > See [Troubleshooting](#troubleshooting) for version-specific issues.
 

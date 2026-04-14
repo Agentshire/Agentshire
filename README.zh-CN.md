@@ -14,10 +14,10 @@ Agentshire 是一个支持OpenClaw/QClaw的插件，让 AI Agent 变成 3D 游�
 >
 > | 平台 | 版本 | 状态 |
 > |---|---|---|
-> | **OpenClaw CLI** | 2026.3.13 | ✅ 推荐 |
+> | **OpenClaw CLI** | 2026.4.x+ | ✅ 推荐 |
 > | **QClaw 桌面端** | 0.2.x | ✅ 支持 |
+> | OpenClaw CLI | 2026.3.13 | ✅ 支持 |
 > | OpenClaw CLI | 2026.3.7 – 3.12 | ⚠️ 可能兼容 |
-> | OpenClaw CLI | 2026.4.x+ | ❌ 暂不支持 — Channel 初始化存在回归问题 |
 >
 > 版本相关问题请查看[故障排除](#故障排除)。
 
