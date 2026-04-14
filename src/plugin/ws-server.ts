@@ -48,6 +48,9 @@ const coldStartBindings = new Set<WebSocket>();
 let activeTownSessionId: string | undefined;
 let customAssetMgr: CustomAssetManager | undefined;
 
+/** Mutable holder for WS callbacks — allows hot-updating after eager startup. */
+let liveCallbacks: Omit<TownWsServerOptions, "port" | "customAssetManager"> = {};
+
 function getPublishedConfigPath(): string {
   const pluginDir = join(fileURLToPath(import.meta.url), "..", "..", "..");
   return join(pluginDir, "town-data", "citizen-config.json");
@@ -350,6 +353,10 @@ export function startTownWsServer(opts: TownWsServerOptions): void {
   if (wss) return;
   customAssetMgr = opts.customAssetManager;
 
+  // Store initial callbacks in the mutable holder so they can be hot-updated later.
+  const { port: _port, customAssetManager: _cam, ...callbacks } = opts;
+  Object.assign(liveCallbacks, callbacks);
+
   wss = new WebSocketServer({ port: opts.port });
   console.log(`[agentshire] WebSocket server listening on ws://localhost:${opts.port}`);
 
@@ -411,16 +418,16 @@ export function startTownWsServer(opts: TownWsServerOptions): void {
               .filter((p: any) => p.kind === "text" && p.text)
               .map((p: any) => p.text)
               .join(" ");
-            if (textParts) opts.onChat?.({ message: textParts, townSessionId });
+            if (textParts) liveCallbacks.onChat?.({ message: textParts, townSessionId });
           } else if (typeof msg.message === "string") {
-            opts.onChat?.({ message: msg.message, townSessionId });
+            liveCallbacks.onChat?.({ message: msg.message, townSessionId });
           }
         } else if (msg.type === "multimodal" && Array.isArray(msg.parts)) {
           const townSessionId = getClientSessionId(ws);
           console.log(
             `${sessionLogPrefix(townSessionId)} WS ← multimodal parts=${msg.parts.length}`,
           );
-          opts.onMultimodal?.({
+          liveCallbacks.onMultimodal?.({
             parts: msg.parts,
             townSessionId,
             ...(typeof msg.agentId === "string" ? { agentId: msg.agentId } : {}),
@@ -434,22 +441,22 @@ export function startTownWsServer(opts: TownWsServerOptions): void {
           console.log(
             `${sessionLogPrefix(townSessionId)} WS ← citizen_chat npc=${msg.npcId} len=${String(msg.message).length}${_debug ? ` "${String(msg.message).slice(0, 80)}"` : ""}`,
           );
-          opts.onCitizenChat?.({ npcId: msg.npcId, message: msg.message, townSessionId });
+          liveCallbacks.onCitizenChat?.({ npcId: msg.npcId, message: msg.message, townSessionId });
         } else if (msg.type === "topic_start" && Array.isArray(msg.npcIds)) {
           const townSessionId = getClientSessionId(ws);
           console.log(`${sessionLogPrefix(townSessionId)} WS ← topic_start npcIds=[${msg.npcIds.join(",")}]`);
-          opts.onTopicStart?.({ npcIds: msg.npcIds, townSessionId });
+          liveCallbacks.onTopicStart?.({ npcIds: msg.npcIds, townSessionId });
         } else if (msg.type === "topic_message" && Array.isArray(msg.npcIds) && typeof msg.message === "string") {
           const townSessionId = getClientSessionId(ws);
           console.log(`${sessionLogPrefix(townSessionId)} WS ← topic_message npcIds=[${msg.npcIds.join(",")}] len=${msg.message.length}`);
-          opts.onTopicMessage?.({ npcIds: msg.npcIds, message: msg.message, townSessionId });
+          liveCallbacks.onTopicMessage?.({ npcIds: msg.npcIds, message: msg.message, townSessionId });
         } else if (msg.type === "topic_end") {
           const townSessionId = getClientSessionId(ws);
           console.log(`${sessionLogPrefix(townSessionId)} WS ← topic_end`);
-          opts.onTopicEnd?.({ townSessionId });
-        } else if (msg.type === "implicit_chat_request" && typeof msg.id === "string" && opts.onImplicitChat) {
+          liveCallbacks.onTopicEnd?.({ townSessionId });
+        } else if (msg.type === "implicit_chat_request" && typeof msg.id === "string" && liveCallbacks.onImplicitChat) {
           const townSessionId = getClientSessionId(ws);
-          opts.onImplicitChat({
+          liveCallbacks.onImplicitChat({
             id: msg.id,
             system: String(msg.system ?? ""),
             user: String(msg.user ?? ""),
@@ -506,11 +513,11 @@ export function startTownWsServer(opts: TownWsServerOptions): void {
           const townSessionId = getClientSessionId(ws);
           const slashText = `/${msg.command}${msg.args ? " " + msg.args : ""}`;
           console.log(`${sessionLogPrefix(townSessionId)} WS ← command "${slashText}"`);
-          opts.onChat?.({ message: slashText, townSessionId });
+          liveCallbacks.onChat?.({ message: slashText, townSessionId });
         } else if (msg.type === "abort") {
           const townSessionId = getClientSessionId(ws);
           console.log(`${sessionLogPrefix(townSessionId)} WS ← abort`);
-          opts.onAction?.({
+          liveCallbacks.onAction?.({
             action: { type: "abort_requested" },
             townSessionId,
           });
@@ -519,7 +526,7 @@ export function startTownWsServer(opts: TownWsServerOptions): void {
           console.log(
             `${sessionLogPrefix(townSessionId)} WS ← action type=${String(msg?.type ?? "unknown")}`,
           );
-          opts.onAction?.({ action: msg, townSessionId });
+          liveCallbacks.onAction?.({ action: msg, townSessionId });
         }
       } catch (err) {
         console.error("[agentshire] WS message parse error:", err);
@@ -537,6 +544,21 @@ export function startTownWsServer(opts: TownWsServerOptions): void {
       console.log(`[agentshire] Town frontend disconnected (${clients.size} remaining)`);
     });
   });
+}
+
+/**
+ * Hot-update WS callbacks after the server has already started.
+ * Only provided callbacks are merged; omitted ones keep their current value.
+ * This allows `gateway.startAccount()` to inject the full set of callbacks
+ * even when the WS server was started eagerly during `register()`.
+ */
+export function updateTownWsCallbacks(
+  callbacks: Partial<Omit<TownWsServerOptions, "port" | "customAssetManager">>,
+): void {
+  Object.assign(liveCallbacks, callbacks);
+  console.log(
+    `[agentshire] WS callbacks updated: ${Object.keys(callbacks).join(", ")}`,
+  );
 }
 
 export function stopTownWsServer(): void {

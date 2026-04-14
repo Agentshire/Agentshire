@@ -136,22 +136,25 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
 
   gateway: {
     startAccount: async (ctx: any) => {
-      const account = ctx.account as ResolvedTownAccount;
-      const rt = getTownRuntime();
-      _channelCtx = { rt, cfg: ctx.cfg, accountId: account.accountId };
-      const { startTownWsServer } = await import("./ws-server.js");
-      const { CustomAssetManager } = await import("./custom-asset-manager.js");
-      const { join } = await import("node:path");
-      const { fileURLToPath } = await import("node:url");
-      const pluginDir = join(fileURLToPath(import.meta.url), "..", "..", "..");
-      const customAssetManager = new CustomAssetManager(pluginDir);
+      try {
+        const account = ctx.account as ResolvedTownAccount;
+        console.log(`[agentshire] startAccount: accountId=${account.accountId} wsPort=${account.wsPort}`);
+        const rt = getTownRuntime();
+        _channelCtx = { rt, cfg: ctx.cfg, accountId: account.accountId };
+        const { startTownWsServer, updateTownWsCallbacks } = await import("./ws-server.js");
+        console.log(`[agentshire] startAccount: ws-server module loaded`);
+        const { CustomAssetManager } = await import("./custom-asset-manager.js");
+        const { join } = await import("node:path");
+        const { fileURLToPath } = await import("node:url");
+        const pluginDir = join(fileURLToPath(import.meta.url), "..", "..", "..");
+        const customAssetManager = new CustomAssetManager(pluginDir);
 
-      const { chat: llmChat } = await import("./llm-agent-proxy.js");
+        const { chat: llmChat } = await import("./llm-agent-proxy.js");
+        console.log(`[agentshire] startAccount: all imports ready, starting WS server on port ${account.wsPort}`);
 
-      startTownWsServer({
-        port: account.wsPort,
-        customAssetManager,
-        onImplicitChat: async (payload) => {
+        // Build the full set of callbacks that require the Gateway context.
+        const fullCallbacks = {
+        onImplicitChat: async (payload: any) => {
           return llmChat({
             system: payload.system,
             user: payload.user,
@@ -160,7 +163,7 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
             stop: payload.stop,
           });
         },
-        onChat: async ({ message, townSessionId }) => {
+        onChat: async ({ message, townSessionId }: { message: string; townSessionId: string }) => {
           if (!message) return;
           console.log(
             `[agentshire] onChat received (${townSessionId}): len=${message.length}${DEBUG ? ` "${message.slice(0, 100)}"` : ""}`,
@@ -178,7 +181,7 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
             console.error("[agentshire] onChat dispatch error:", err);
           }
         },
-        onMultimodal: async ({ parts, townSessionId, npcId }) => {
+        onMultimodal: async ({ parts, townSessionId, npcId }: { parts: any[]; townSessionId: string; npcId?: string }) => {
           console.log(
             `[agentshire] onMultimodal received (${townSessionId}): ${parts.length} parts${npcId ? ` npc=${npcId}` : ""}`,
           );
@@ -231,7 +234,7 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
             console.error("[agentshire] onMultimodal dispatch error:", err);
           }
         },
-        onAction: async ({ action, townSessionId }) => {
+        onAction: async ({ action, townSessionId }: { action: any; townSessionId: string }) => {
           console.log(
             `[agentshire] onAction received (${townSessionId}): type=${action.type}`,
           );
@@ -254,7 +257,7 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
             console.error("[agentshire] onAction dispatch error:", err);
           }
         },
-        onCitizenChat: async ({ npcId, message, townSessionId }) => {
+        onCitizenChat: async ({ npcId, message, townSessionId }: { npcId: string; message: string; townSessionId: string }) => {
           console.log(
             `[agentshire] onCitizenChat (${townSessionId}): npc=${npcId} len=${message.length}${DEBUG ? ` "${message.slice(0, 80)}"` : ""}`,
           );
@@ -272,7 +275,7 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
             console.error("[agentshire] onCitizenChat dispatch error:", err);
           }
         },
-        onTopicStart: async ({ npcIds, townSessionId }) => {
+        onTopicStart: async ({ npcIds, townSessionId }: { npcIds: string[]; townSessionId: string }) => {
           try {
             const { startDiscussion } = await import("./group-discussion.js");
             const { readFileSync, existsSync } = await import("node:fs");
@@ -305,7 +308,7 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
             console.error("[agentshire] onTopicStart error:", err);
           }
         },
-        onTopicMessage: async ({ npcIds: _npcIds, message, townSessionId: _townSessionId }) => {
+        onTopicMessage: async ({ npcIds: _npcIds, message, townSessionId: _townSessionId }: { npcIds: string[]; message: string; townSessionId: string }) => {
           try {
             const { onUserMessage, hasActiveDiscussion } = await import("./group-discussion.js");
             if (!hasActiveDiscussion()) {
@@ -325,7 +328,16 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
             console.error("[agentshire] onTopicEnd error:", err);
           }
         },
-      });
+        };
+
+        // Try to start the WS server (no-op if already running from eager init).
+        // Then hot-update the callbacks so the full Gateway-connected set is active.
+        startTownWsServer({
+          port: account.wsPort,
+          customAssetManager,
+          ...fullCallbacks,
+        });
+        updateTownWsCallbacks(fullCallbacks);
 
       console.log(
         `[agentshire] Town WebSocket ready on ws://localhost:${account.wsPort}`,
@@ -335,6 +347,9 @@ export const agentTownPlugin: ChannelPlugin<ResolvedTownAccount> = {
 
       const { stopTownWsServer } = await import("./ws-server.js");
       stopTownWsServer();
+    } catch (err) {
+      console.error("[agentshire] startAccount failed:", err);
+    }
     },
 
     stopAccount: async () => {

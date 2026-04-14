@@ -1,8 +1,8 @@
 /**
  * LLM proxy for implicit NPC behaviors and soul generation.
  * Reads provider config from OpenClaw runtime (rt.config.loadConfig()),
- * resolves env-templated API keys from the config's env section,
- * and makes direct HTTP calls. Falls back to process.env for QClaw compatibility.
+ * resolves template-variable API keys from the config's variable section,
+ * and makes direct HTTP calls to configured LLM providers.
  */
 
 import { getTownRuntime } from "./runtime.js";
@@ -30,8 +30,8 @@ interface ProviderConfig {
 const MAX_CONCURRENT = 2;
 const MAX_QUEUE = 10;
 
-function resolveEnvRef(value: string, env: Record<string, string>): string {
-  return value.replace(/\$\{(\w+)\}/g, (_, key) => env[key] ?? process.env[key] ?? "");
+function resolveConfigRef(value: string, vars: Record<string, string>): string {
+  return value.replace(/\$\{(\w+)\}/g, (_, key) => vars[key] ?? "");
 }
 
 function loadProvider(): ProviderConfig | null {
@@ -44,7 +44,7 @@ function loadProvider(): ProviderConfig | null {
 
     for (const [, provider] of Object.entries(providers) as [string, any][]) {
       if (!provider.baseUrl || !provider.apiKey) continue;
-      const apiKey = resolveEnvRef(String(provider.apiKey), configVars);
+      const apiKey = resolveConfigRef(String(provider.apiKey), configVars);
       if (!apiKey) continue;
 
       const apiFormat = provider.api?.startsWith("openai") ? "openai" as const : "anthropic-messages" as const;
