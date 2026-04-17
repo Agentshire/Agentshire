@@ -15,12 +15,7 @@
       "townPort": {
         "type": "number",
         "default": 55210,
-        "description": "HTTP port to serve the town frontend"
-      },
-      "autoLaunch": {
-        "type": "boolean",
-        "default": true,
-        "description": "Automatically open town in browser on start"
+        "description": "HTTP port for serving the town frontend, editor API, and steward workspace files"
       }
     }
   }

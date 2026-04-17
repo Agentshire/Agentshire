@@ -107,6 +107,15 @@ export async function ensureTownAgentConfig(): Promise<void> {
       dirty = true;
     }
 
+    // Ensure channels.agentshire exists so Gateway calls startAccount()
+    const channels = cfg.channels ?? {};
+    if (!channels[CHANNEL_ID]) {
+      cfg.channels = { ...channels, [CHANNEL_ID]: { enabled: true } };
+      dirty = true;
+    } else if (channels[CHANNEL_ID].enabled === false) {
+      // Respect explicit disable — don't override
+    }
+
     const DEFAULT_TIMEOUT = 600;
     const subagents = cfg.agents?.defaults?.subagents ?? {};
     if (!subagents.runTimeoutSeconds || subagents.runTimeoutSeconds < DEFAULT_TIMEOUT) {
@@ -117,6 +126,15 @@ export async function ensureTownAgentConfig(): Promise<void> {
         runTimeoutSeconds: Math.max(subagents.runTimeoutSeconds ?? 0, DEFAULT_TIMEOUT),
       };
       dirty = true;
+    }
+
+    // Warn if user has a manual tools.allow list — it overrides plugin-registered tools
+    if (cfg.tools?.allow && Array.isArray(cfg.tools.allow)) {
+      console.warn(
+        `[agentshire] ⚠️  Detected manual "tools.allow" in openclaw.json. ` +
+        `This overrides the 11 tools registered by the plugin (create_project, create_plan, etc.). ` +
+        `If the agent reports "no tools available", remove the "tools" section from openclaw.json.`,
+      );
     }
 
     if (!dirty) return;
